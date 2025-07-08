@@ -1,0 +1,54 @@
+/* Netflix Skin for JWPlayer8 */
+.jwplayer.jw-skin-netflix {
+    background: #000;
+    font-family: "Netflix Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.jwplayer.jw-skin-netflix .jw-controls {
+    background: linear-gradient(transparent, rgba(0,0,0,0.7));
+}
+
+.jwplayer.jw-skin-netflix .jw-button-color {
+    color: #fff;
+}
+
+.jwplayer.jw-skin-netflix .jw-button-color:hover {
+    color: #e50914;
+}
+
+.jwplayer.jw-skin-netflix .jw-progress {
+    background: rgba(255,255,255,0.3);
+}
+
+.jwplayer.jw-skin-netflix .jw-progress .jw-buffer {
+    background: rgba(255,255,255,0.4);
+}
+
+.jwplayer.jw-skin-netflix .jw-progress .jw-progress-played {
+    background: #e50914;
+}
+
+.jwplayer.jw-skin-netflix .jw-knob {
+    background: #e50914;
+    width: 12px;
+    height: 12px;
+}
+
+.jwplayer.jw-skin-netflix .jw-display-icon-container {
+    background: rgba(0,0,0,0.3);
+    border-radius: 50%;
+    margin: 0 auto;
+    border: 2px solid #fff;
+}
+
+.jwplayer.jw-skin-netflix .jw-display-icon-container:hover {
+    background: rgba(229,9,20,0.8);
+    border-color: #e50914;
+}
+
+.jwplayer.jw-skin-netflix .jw-captions {
+    color: #fff;
+    font-family: "Netflix Sans", Arial, sans-serif;
+    font-size: 16px;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+}
