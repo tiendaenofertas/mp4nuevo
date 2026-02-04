@@ -6,7 +6,7 @@ require_once __DIR__ . "/config/config.php";
 
 // Configuración de autenticación
 const USERNAME = "admin";
-const PASSWORD = "mp4secure2025";
+const PASSWORD = "xxxx";
 const SECRET_KEY_1 = "xzorra_key_2025";
 const SECRET_KEY_2 = "secure_panel_key";
 
