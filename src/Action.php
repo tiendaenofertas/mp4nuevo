@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+/**
+ * MP4 Security System - Lógica de Procesamiento Segura
+ * Maneja la validación, generación y cifrado de datos de video.
+ */
+
 require_once __DIR__ . '/../config/config.php';
 
 class MP4SecureAction {
@@ -14,68 +19,64 @@ class MP4SecureAction {
     }
 
     public function process(): string {
-        // Verificar método HTTP
+        // 1. Verificar método HTTP
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            logSecurityEvent("Invalid HTTP method", ['method' => $_SERVER['REQUEST_METHOD']]);
+            logSecurityEvent("Método HTTP inválido", ['method' => $_SERVER['REQUEST_METHOD']]);
             return $this->error('Método no permitido', 405);
         }
 
-        // Rate limiting
+        // 2. Rate limiting basado en la IP del cliente
         if (!checkRateLimit($this->clientIP)) {
-            logSecurityEvent("Rate limit exceeded", ['ip' => $this->clientIP]);
+            logSecurityEvent("Límite de peticiones excedido", ['ip' => $this->clientIP]);
             return $this->error('Demasiadas solicitudes. Intente más tarde.', 429);
         }
 
-        // Validar token CSRF
+        // 3. Validar token CSRF para prevenir ataques de terceros
         $csrfToken = $_POST['csrf_token'] ?? '';
         if (!validateCSRFToken($csrfToken)) {
-            logSecurityEvent("Invalid CSRF token", ['ip' => $this->clientIP]);
-            return $this->error('Token de seguridad inválido', 403);
+            logSecurityEvent("Token CSRF inválido", ['ip' => $this->clientIP]);
+            return $this->error('Sesión de seguridad inválida o expirada', 403);
         }
 
-        // Validar entrada
+        // 4. Validar y sanear entradas
         if (!$this->validateInput()) {
-            logSecurityEvent("Input validation failed", [
-                'errors' => $this->errors,
-                'ip' => $this->clientIP
-            ]);
             return $this->error(implode(', ', $this->errors), 400);
         }
 
-        // Procesar datos
+        // 5. Procesar y cifrar datos
         return $this->processSecureData();
     }
 
     private function validateInput(): bool {
-        // Limpiar y validar URL del video
-        $this->data['link'] = sanitizeInput($_POST['link'] ?? '');
+        // Limpiar y validar URL del video (Campo obligatorio)
+        $this->data['link'] = trim($_POST['link'] ?? '');
         if (empty($this->data['link'])) {
-            $this->errors[] = 'URL del video es requerida';
+            $this->errors[] = 'La URL del video es obligatoria';
             return false;
         }
 
         if (!validateUrl($this->data['link'])) {
-            $this->errors[] = 'URL del video inválida';
+            $this->errors[] = 'La URL del video proporcionada no es válida';
             return false;
         }
 
-        // Verificar que la URL sea accesible (opcional pero recomendado)
+        // Verificar disponibilidad de la URL
         if (!$this->checkUrlAccessibility($this->data['link'])) {
-            $this->errors[] = 'El video no está disponible o no es accesible';
+            $this->errors[] = 'El video no es accesible o el servidor de origen denegó la conexión';
             return false;
         }
 
         // Validar poster (opcional)
         $this->data['poster'] = sanitizeInput($_POST['poster'] ?? '');
         if (!empty($this->data['poster']) && !validateUrl($this->data['poster'])) {
-            $this->errors[] = 'URL del poster inválida';
+            $this->errors[] = 'La URL de la imagen de portada es inválida';
             return false;
         }
 
-        // Validar subtítulos
+        // Procesar subtítulos de forma estructurada
         $this->data['subtitles'] = $this->processSubtitles();
 
-        return true;
+        return empty($this->errors);
     }
 
     private function checkUrlAccessibility(string $url): bool {
@@ -83,34 +84,24 @@ class MP4SecureAction {
             $context = stream_context_create([
                 'http' => [
                     'method' => 'HEAD',
-                    'timeout' => 10,
+                    'timeout' => 8,
                     'header' => [
-                        'User-Agent: Mozilla/5.0 (compatible; MP4SecurityBot/1.0)',
-                        'Accept: video/mp4, video/*, */*'
-                    ]
+                        'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) MP4Security/1.0',
+                        'Accept: */*'
+                    ],
+                    'follow_location' => 1,
+                    'max_redirects' => 3
                 ]
             ]);
 
-            $headers = @get_headers($url, false, $context);
-            
-            if ($headers === false) {
-                return false;
-            }
+            $headers = @get_headers($url, 1, $context);
+            if ($headers === false) return false;
 
-            // Verificar código de respuesta
-            $firstHeader = $headers[0] ?? '';
-            $isSuccessful = (
-                strpos($firstHeader, '200') !== false || 
-                strpos($firstHeader, '206') !== false ||
-                strpos($firstHeader, '302') !== false ||
-                strpos($firstHeader, '301') !== false
-            );
-
-            return $isSuccessful;
+            $status = $headers[0] ?? '';
+            return (str_contains($status, '200') || str_contains($status, '206') || str_contains($status, '302'));
 
         } catch (Exception $e) {
-            error_log("Error verificando accesibilidad de URL: " . $e->getMessage());
-            return true; // En caso de error, permitir continuar
+            return true; // En caso de fallo del check, permitimos para no bloquear legítimos
         }
     }
 
@@ -119,129 +110,76 @@ class MP4SecureAction {
         $subs = $_POST['sub'] ?? [];
         $labels = $_POST['label'] ?? [];
 
-        if (!is_array($subs) || !is_array($labels)) {
-            return [];
-        }
+        if (!is_array($subs)) return [];
 
         foreach ($subs as $key => $url) {
-            $url = sanitizeInput($url);
-            $label = sanitizeInput($labels[$key] ?? "Subtítulo " . ($key + 1));
-            
-            if (!empty($url)) {
-                if (validateUrl($url)) {
-                    $subtitles[$label] = $url;
-                } else {
-                    error_log("URL de subtítulo inválida ignorada: $url");
-                }
+            $url = trim((string)$url);
+            if (!empty($url) && validateUrl($url)) {
+                $label = sanitizeInput($labels[$key] ?? "Opcional " . ($key + 1));
+                $subtitles[$label] = $url;
             }
         }
-
         return $subtitles;
     }
 
     private function processSecureData(): string {
         try {
-            // Crear estructura de datos del video
+            // Construcción del payload con metadatos de seguridad
             $videoData = [
                 'link' => $this->data['link'],
                 'poster' => $this->data['poster'],
                 'sub' => $this->data['subtitles'],
                 'metadata' => [
-                    'created_at' => time(),
-                    'ip_hash' => hash('sha256', $this->clientIP . MP4_HMAC_KEY),
-                    'user_agent_hash' => hash('sha256', ($_SERVER['HTTP_USER_AGENT'] ?? '') . MP4_HMAC_KEY),
-                    'version' => MP4_VERSION
+                    'ts' => time(),
+                    'v' => MP4_VERSION,
+                    'hid' => hash('sha256', $this->clientIP . MP4_HMAC_KEY)
                 ]
             ];
 
-            // Convertir a JSON con validación
             $jsonData = json_encode($videoData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-            
-            if ($jsonData === false) {
-                throw new Exception("Error generando JSON: " . json_last_error_msg());
-            }
 
-            // Encriptar con el sistema seguro
+            // Cifrado utilizando el sistema compatible con IV estático
             $encoded = encodeSecure($jsonData);
             
             if ($encoded === false) {
-                throw new Exception("Error en la encriptación segura");
+                throw new Exception("Fallo crítico en el motor de cifrado");
             }
 
-            // Verificación de integridad
-            $verification = decodeSecure($encoded);
-            if ($verification === false) {
-                throw new Exception("Error en verificación de integridad");
+            // Verificación inmediata de integridad del token generado
+            $check = decodeSecure($encoded);
+            if ($check === false) {
+                throw new Exception("Error de consistencia: El token generado no pudo ser validado");
             }
 
-            // Verificar que los datos coinciden
-            $verificationJson = json_decode($verification['data'], true);
-            if (!$verificationJson || $verificationJson['link'] !== $this->data['link']) {
-                throw new Exception("Error en verificación de datos");
-            }
+            logSecurityEvent("Enlace generado con éxito", ['domain' => parse_url($this->data['link'], PHP_URL_HOST)]);
 
-            // Log de éxito
-            logSecurityEvent("URL encoded successfully", [
-                'ip' => $this->clientIP,
-                'video_domain' => parse_url($this->data['link'], PHP_URL_HOST),
-                'has_poster' => !empty($this->data['poster']),
-                'subtitle_count' => count($this->data['subtitles'])
-            ]);
+            header('Content-Type: application/json');
+            return json_encode(['status' => 'success', 'token' => $encoded]);
 
-            return $encoded;
-
-        } catch (JsonException $e) {
-            error_log("Error JSON en Action: " . $e->getMessage());
-            return $this->error('Error procesando datos JSON: ' . $e->getMessage());
         } catch (Exception $e) {
-            error_log("Error general en Action: " . $e->getMessage());
-            return $this->error('Error interno del servidor');
+            logSecurityEvent("Error en generación segura", ['msg' => $e->getMessage()]);
+            return $this->error('Error interno al procesar la seguridad del enlace');
         }
     }
 
     private function error(string $message, int $code = 400): string {
         http_response_code($code);
+        header('Content-Type: application/json');
         
-        // Log del error sin información sensible
-        error_log("MP4Action Error ($code): $message - IP: " . $this->clientIP);
-        
-        // Respuesta JSON estructurada
-        try {
-            return json_encode([
-                'error' => $message,
-                'code' => $code,
-                'timestamp' => time()
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
-        } catch (JsonException $e) {
-            // Fallback si falla la generación de JSON
-            error_log("Error generando JSON de error: " . $e->getMessage());
-            return '{"error":"Error interno del servidor","code":500,"timestamp":' . time() . '}';
-        }
+        return json_encode([
+            'status' => 'error',
+            'message' => $message,
+            'code' => $code,
+            'timestamp' => time()
+        ], JSON_UNESCAPED_UNICODE);
     }
 }
 
-// Punto de entrada principal
+// Punto de ejecución
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    try {
-        $action = new MP4SecureAction();
-        echo $action->process();
-    } catch (Exception $e) {
-        error_log("Error crítico en Action.php: " . $e->getMessage());
-        http_response_code(500);
-        echo json_encode([
-            'error' => 'Error crítico del sistema',
-            'code' => 500,
-            'timestamp' => time()
-        ]);
-    }
+    $action = new MP4SecureAction();
+    echo $action->process();
 } else {
-    // Método no permitido
     http_response_code(405);
-    header('Allow: POST');
-    echo json_encode([
-        'error' => 'Método no permitido. Use POST.',
-        'code' => 405,
-        'timestamp' => time()
-    ]);
+    echo json_encode(['error' => 'Acceso no autorizado']);
 }
-?>
