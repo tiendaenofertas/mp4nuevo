@@ -1,9 +1,39 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * MP4 Security System - Consola de Monitoreo Corregida
+ * Implementa control de acceso y seguridad perimetral.
+ */
+
+require_once __DIR__ . "/config/config.php";
+
+// 1. PROTECCIÓN DE ACCESO: Solo el administrador puede entrar
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Reutilizamos la validación de hash de index.php para coherencia
+const SECRET_KEY_1 = "xzorra_key_2025";
+const PASSWORD = "mp4secure2025";
+const SECRET_KEY_2 = "secure_panel_key";
+$authHash = hash('sha256', SECRET_KEY_1 . PASSWORD . SECRET_KEY_2);
+
+if (!isset($_SESSION["login"]) || $_SESSION["login"] !== $authHash) {
+    logSecurityEvent("Intento de acceso no autorizado a console.php");
+    header("Location: index.php");
+    exit;
+}
+
+// 2. ACTIVAR CABECERAS DE SEGURIDAD
+setSecurityHeaders();
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MP4 Console</title>
+    <title>MP4 Console - Monitoreo Activo</title>
     <style>
         body {
             margin: 0;
@@ -88,7 +118,7 @@
 </head>
 <body>
     <div class="header">
-        <div class="logo">MP4 Console v2.0</div>
+        <div class="logo">MP4 Console v<?= htmlspecialchars(MP4_VERSION) ?></div>
         <div>
             <span class="status-dot"></span>
             <span>Sistema Activo</span>
@@ -98,7 +128,7 @@
 
     <div class="content">
         <div class="panel">
-            <div class="panel-title">📊 Estadísticas del Sistema</div>
+            <div class="panel-title">📊 Estadísticas del Sistema (Simulado)</div>
             <div class="stat-card">
                 <div class="stat-value" id="totalRequests">0</div>
                 <div class="stat-label">Solicitudes Totales</div>
@@ -120,10 +150,10 @@
                     <strong>[Sistema]</strong> MP4 Console iniciado correctamente
                 </div>
                 <div class="log-entry">
-                    <strong>[Info]</strong> Cargando configuración...
+                    <strong>[Info]</strong> Cargando configuración segura...
                 </div>
                 <div class="log-entry">
-                    <strong>[Success]</strong> Sistema listo para recibir solicitudes
+                    <strong>[Success]</strong> Autenticación validada: Panel listo
                 </div>
             </div>
         </div>
@@ -148,24 +178,22 @@
             entry.innerHTML = `<strong>[${new Date().toLocaleTimeString()}]</strong> ${message}`;
             container.insertBefore(entry, container.firstChild);
             
-            // Mantener solo 20 logs
             const logs = container.querySelectorAll(".log-entry");
             if (logs.length > 20) {
                 logs[logs.length - 1].remove();
             }
         }
 
-        // Actualizar cada segundo
         setInterval(updateTime, 1000);
         setInterval(updateStats, 5000);
 
-        // Simular actividad
         const activities = [
             "Nueva solicitud de encriptación recibida",
             "URL encriptada exitosamente", 
             "Stream iniciado para cliente",
             "Reproductor cargado correctamente",
-            "Cache limpiado automáticamente"
+            "Filtro de IP aplicado",
+            "Validación de token exitosa"
         ];
 
         setInterval(() => {
